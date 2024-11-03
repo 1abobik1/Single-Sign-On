@@ -1,10 +1,15 @@
 package main
 
 import (
-	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"log/slog"
+
+	"github.com/1abobik1/Single-Sign-On/internal/app"
 	"github.com/1abobik1/Single-Sign-On/internal/config"
+	"github.com/babenow/slogwrapper/slogpretty"
 )
 
 const (
@@ -14,11 +19,23 @@ const (
 )
 
 func main() {
-	cfg := config.MustLoad() // go run cmd/sso/main.go --config=./config/local.yaml   для локального запуска(в продакшене использовать другой)
+	cfg := config.MustLoad()
 
 	log := setupLogger(cfg.Env)
 
 	log.Info("starting app...")
+
+	application := app.New(log, cfg.GRPC.Port, cfg.StoragePath, cfg.TokeTTL)
+
+	go application.GRPCSrv.MustRun()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+
+	<-stop
+
+	application.GRPCSrv.Stop()
+	log.Info("Gracefully stopped")
 }
 
 func setupLogger(env string) *slog.Logger {
@@ -26,17 +43,26 @@ func setupLogger(env string) *slog.Logger {
 
 	switch env {
 	case envLocal:
-		log = slog.New(
-			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		opts := slogpretty.PrettyHandlerOptions{
+			SlogOpts: &slog.HandlerOptions{Level: slog.LevelDebug},
+		}
+		handler := opts.NewPrettyHandler(os.Stdout)
+		log = slog.New(handler)
 
 	case envDev:
-		log = slog.New(
-			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		opts := slogpretty.PrettyHandlerOptions{
+			SlogOpts: &slog.HandlerOptions{Level: slog.LevelDebug},
+		}
+		handler := opts.NewPrettyHandler(os.Stdout)
+		log = slog.New(handler)
+
 	case envProd:
-		log = slog.New(
-			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		opts := slogpretty.PrettyHandlerOptions{
+			SlogOpts: &slog.HandlerOptions{Level: slog.LevelInfo},
+		}
+		handler := opts.NewPrettyHandler(os.Stdout)
+		log = slog.New(handler)
 	}
 
 	return log
-
 }
