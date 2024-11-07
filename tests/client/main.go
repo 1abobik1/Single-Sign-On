@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	sso "github.com/1abobik1/ProtoBuf/gen/go/sso"
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	grpcretry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"github.com/sirupsen/logrus"
@@ -81,7 +80,7 @@ func (c *Client) CheckAdminStatus(ctx context.Context, userID int64) (status boo
 	})
 	if err != nil {
 		c.log.Errorf("Failed to check admin status: %v", err)
-		return 
+		return
 	}
 	c.log.Infof("User admin status: %v", response.IsAdmin)
 

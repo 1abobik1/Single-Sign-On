@@ -48,6 +48,18 @@ func (s *Storage) SaveUser(ctx context.Context, email string, passHash []byte) (
 	return id, nil
 }
 
+func (s *Storage) SaveRefreshToken(ctx context.Context, userID int64, refreshToken string) error {
+	const op = "storage.postgresql.SaveRefreshToken"
+
+	// Обновляем refresh токен для существующего пользователя
+	_, err := s.db.ExecContext(ctx, "UPDATE users SET refresh_token = $1 WHERE id = $2", refreshToken, userID)
+	if err != nil {
+		return fmt.Errorf("%s: %v", op, err)
+	}
+
+	return nil
+}
+
 // User ищет пользователя по email.
 func (s *Storage) User(ctx context.Context, email string) (models.User, error) {
 	const op = "storage.postgresql.User"

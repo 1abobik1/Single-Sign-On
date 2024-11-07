@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/1abobik1/Single-Sign-On/internal/domain/models"
-	"github.com/1abobik1/Single-Sign-On/internal/storage"
 	jwt "github.com/1abobik1/Single-Sign-On/internal/lib/jwt"
+	"github.com/1abobik1/Single-Sign-On/internal/storage"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -20,6 +20,7 @@ var (
 
 type UserSaver interface {
 	SaveUser(ctx context.Context, email string, passHash []byte) (user_id int64, err error)
+	SaveRefreshToken(ctx context.Context, userID int64, refreshToken string) (err error)
 }
 
 type UserProvider interface {
@@ -62,7 +63,7 @@ func New(
 	}
 }
 
-func (a *Auth) Login(ctx context.Context, email string, password string, appID int) (string, error) {
+func (a *Auth) Login(ctx context.Context, email string, password string, appID int) (string, string, error) {
 	const op = "Auth.Login"
 
 	a.log.With(
@@ -70,39 +71,59 @@ func (a *Auth) Login(ctx context.Context, email string, password string, appID i
 		"email", email,
 	).Info("attempting to log in user")
 
+	// Проверка наличия пользователя
 	user, err := a.usrProvider.User(ctx, email)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			a.log.Warn("user not found")
-			return "", storage.ErrUserNotFound
+			return "", "", storage.ErrUserNotFound
 		}
 		a.log.Error("failed to retrieve user", "error", err)
-		return "", fmt.Errorf("%s: %v", op, err)
+		return "", "", fmt.Errorf("%s: %v", op, err)
 	}
 
+	// Проверка пароля
 	if err := bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)); err != nil {
 		a.log.Warn("invalid password")
-		return "", ErrInvalidCredentials
+		return "", "", ErrInvalidCredentials
 	}
 
+	// Получение информации о приложении
 	app, err := a.appProvider.App(ctx, appID)
 	if err != nil {
 		if errors.Is(err, storage.ErrAppNotFound) {
 			a.log.Warn("app not found", "error", err)
-			return "", storage.ErrAppNotFound
+			return "", "", storage.ErrAppNotFound
 		}
 		a.log.Error("failed to retrieve app", "error", err)
-		return "", fmt.Errorf("%s: %v", op, err)
+		return "", "", fmt.Errorf("%s: %v", op, err)
 	}
 
-	// token, err := jwt.NewToken(user, app, a.tokenTTL)
-	// if err != nil {
-	// 	a.log.Error("failed to generate JWT", "error", err)
-	// 	return "", fmt.Errorf("%s: %v", op, err)
-	// }
+	// Генерация нового access токена
+	accessToken, err := jwt.NewAccessToken(user, app, a.AcessTokenTTL)
+	if err != nil {
+		a.log.Error("failed to generate JWT", "error", err)
+		return "", "", fmt.Errorf("%s: %v", op, err)
+	}
+
+	// Проверка существования refresh токена
+	refreshToken := user.RefreshToken
+	if refreshToken == "" {
+		// Если токен отсутствует, создаем новый refresh токен
+		refreshToken, err = jwt.NewRefreshToken(user, app, 30*24*time.Hour) // Установите срок жизни refresh токена, например, 30 дней
+		if err != nil {
+			a.log.Error("failed to generate refresh token", "error", err)
+			return "", "", fmt.Errorf("%s: %v", op, err)
+		}
+		// Сохраняем refresh токен в базе данных
+		if err := a.usrSaver.SaveRefreshToken(ctx, user.ID, refreshToken); err != nil {
+			a.log.Error("failed to save refresh token", "error", err)
+			return "", "", fmt.Errorf("%s: %v", op, err)
+		}
+	}
 
 	a.log.Info("user logged in successfully")
-	return token, nil
+	return accessToken, refreshToken, nil
 }
 
 func (a *Auth) RegisterNewUser(ctx context.Context, email string, pass string, appID int) (string, string, error) {
@@ -136,8 +157,12 @@ func (a *Auth) RegisterNewUser(ctx context.Context, email string, pass string, a
 		return "", "", fmt.Errorf("%s: %v", op, err)
 	}
 
-	// Генерация access и refresh токенов
-	accessToken, err := jwt.createAccessToken(user, app, a.AcessTokenTTL)
+	accessToken, err := jwt.NewAccessToken(user, app, a.AcessTokenTTL)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %v", op, err)
+	}
+
+	refreshToken, err := jwt.NewRefreshToken(user, app, a.RefreshTokenTTL)
 	if err != nil {
 		return "", "", fmt.Errorf("%s: %v", op, err)
 	}
@@ -171,4 +196,52 @@ func (a *Auth) IsAdmin(ctx context.Context, userID int64) (bool, error) {
 
 	a.log.Info("checked admin status", "isAdmin", isAdmin)
 	return isAdmin, nil
+}
+
+func (a *Auth) RefreshAccessToken(ctx context.Context, refreshToken string, appID int) (string, error) {
+	const op = "Auth.RefreshAccessToken"
+
+	// Проверка refresh токена
+	claims, err := jwt.ParseRefreshToken(refreshToken, a.appProvider, appID)
+	if err != nil {
+		a.log.Warn("invalid refresh token")
+		return "", ErrInvalidCredentials
+	}
+
+	// Получение информации о пользователе по UID
+	userID, ok := claims["uid"].(int64)
+	if !ok {
+		return "", ErrInvalidCredentials
+	}
+
+	user, err := a.usrProvider.UserByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, storage.ErrUserNotFound) {
+			a.log.Warn("user not found")
+			return "", storage.ErrUserNotFound
+		}
+		a.log.Error("failed to retrieve user", "error", err)
+		return "", fmt.Errorf("%s: %v", op, err)
+	}
+
+	// Проверка appID
+	app, err := a.appProvider.App(ctx, appID)
+	if err != nil {
+		if errors.Is(err, storage.ErrAppNotFound) {
+			a.log.Warn("app not found", "error", err)
+			return "", storage.ErrAppNotFound
+		}
+		a.log.Error("failed to retrieve app", "error", err)
+		return "", fmt.Errorf("%s: %v", op, err)
+	}
+
+	// Генерация нового access токена
+	accessToken, err := jwt.NewAccessToken(user, app, a.AcessTokenTTL)
+	if err != nil {
+		a.log.Error("failed to generate JWT", "error", err)
+		return "", fmt.Errorf("%s: %v", op, err)
+	}
+
+	a.log.Info("access token refreshed successfully")
+	return accessToken, nil
 }

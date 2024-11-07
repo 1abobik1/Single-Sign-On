@@ -25,7 +25,7 @@ func main() {
 
 	log.Info("starting app...")
 
-	application := app.New(log, cfg.GRPC.Port, cfg.StoragePath, cfg.TokeTTL)
+	application := app.New(log, cfg.GRPC.Port, cfg.StoragePath, cfg.AcessTokenTTL, cfg.RefreshTokenTTL)
 
 	go application.GRPCSrv.MustRun()
 

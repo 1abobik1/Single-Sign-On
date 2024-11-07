@@ -8,8 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// NewToken creates new JWT token for given user and app.
-func createAccessToken(user models.User, app models.App, duration time.Duration) (string, error) {
+func NewAccessToken(user models.User, app models.App, duration time.Duration) (string, error) {
 	token := jwt.New(jwt.SigningMethodHS256)
 
 	claims := token.Claims.(jwt.MapClaims)
@@ -26,7 +25,7 @@ func createAccessToken(user models.User, app models.App, duration time.Duration)
 	return tokenString, nil
 }
 
-func createRefreshToken(user models.User, app models.App, duration time.Duration) (string, error) {
+func NewRefreshToken(user models.User, app models.App, duration time.Duration) (string, error) {
 	refreshToken := jwt.New(jwt.SigningMethodHS256)
 
 	claims := refreshToken.Claims.(jwt.MapClaims)

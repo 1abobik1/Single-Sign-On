@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 
-	sso "github.com/1abobik1/ProtoBuf/gen/go/sso"
 	"github.com/1abobik1/Single-Sign-On/internal/services/auth"
 	"github.com/1abobik1/Single-Sign-On/internal/storage"
 
@@ -14,9 +13,9 @@ import (
 )
 
 type Auth interface {
-	Login(ctx context.Context, email string, password string, appID int) (token string, err error)
+	Login(ctx context.Context, email string, password string, appID int) (acceess_token string, refresh_token string, err error)
 
-	RegisterNewUser(ctx context.Context, email string, password string) (UserID int64, err error)
+	RegisterNewUser(ctx context.Context, email string, password string) (UserID int64, acceess_token string, refresh_token string, err error)
 
 	IsAdmin(ctx context.Context, UserID int64) (bool, error)
 }
@@ -43,7 +42,7 @@ func (s *serverAPI) Login(ctx context.Context, req *sso.LoginRequest) (*sso.Logi
 		return nil, status.Error(codes.InvalidArgument, "app_id is required")
 	}
 
-	token, err := s.auth.Login(ctx, req.GetEmail(), req.GetPassword(), int(req.GetAppId()))
+	acceess_token, refresh_token, err := s.auth.Login(ctx, req.GetEmail(), req.GetPassword(), int(req.GetAppId()))
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			return nil, status.Error(codes.InvalidArgument, "invalid email or password")
@@ -52,7 +51,7 @@ func (s *serverAPI) Login(ctx context.Context, req *sso.LoginRequest) (*sso.Logi
 		return nil, status.Error(codes.Internal, "failed to login")
 	}
 
-	return &sso.LoginResponse{Token: token}, nil
+	return &sso.LoginResponse{acceess_token: acceess_token, refresh_token: refresh_token}, nil
 }
 
 func (s *serverAPI) Register(ctx context.Context, req *sso.RegisterRequest) (*sso.RegisterResponse, error) {
@@ -70,7 +69,7 @@ func (s *serverAPI) Register(ctx context.Context, req *sso.RegisterRequest) (*ss
 		if errors.Is(err, storage.ErrUserExists) {
 			return nil, status.Error(codes.AlreadyExists, "user already exists")
 		}
-		
+
 		return nil, status.Error(codes.Internal, "internal server error")
 	}
 
