@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"testing"
 	"time"
 
 	sso "github.com/1abobik1/ProtoBuf/gen/go/sso"
 	grpc_logging "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	grpcretry "github.com/grpc-ecosystem/go-grpc-middleware/retry"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"github.com/thanhpk/randstr"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -73,18 +75,20 @@ func (c *Client) LoginUser(ctx context.Context, email, password string, appId in
 	c.log.Infof("User logged in with token: %s", response.Token)
 }
 
-func (c *Client) CheckAdminStatus(ctx context.Context, userID int64) {
+func (c *Client) CheckAdminStatus(ctx context.Context, userID int64) (status bool) {
 	response, err := c.api.IsAdmin(ctx, &sso.IsAdminRequest{
 		UserId: userID,
 	})
 	if err != nil {
 		c.log.Errorf("Failed to check admin status: %v", err)
-		return
+		return 
 	}
 	c.log.Infof("User admin status: %v", response.IsAdmin)
+
+	return response.IsAdmin
 }
 
-func (c *Client) GetUSerID(ctx context.Context, email string, password string) int64 {
+func (c *Client) GetUserID(ctx context.Context, email string, password string) (UserID int64) {
 	registerResponse, err := c.api.Register(ctx, &sso.RegisterRequest{Email: email, Password: password})
 	if err != nil {
 		c.log.Fatalf("Failed to register user: %v", err)
@@ -93,25 +97,38 @@ func (c *Client) GetUSerID(ctx context.Context, email string, password string) i
 	return registerResponse.UserId
 }
 
-func main() {
-	// Create client
+func TestGRPCClient(t *testing.T) {
 	log := logrus.NewEntry(logrus.New())
 	ctx := context.Background()
+
 	client, err := New(ctx, log, "localhost:44044", time.Second*5, 3)
-	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
-	}
+	assert.NoError(t, err, "Failed to create client")
 
-	// check 5 req
 	for i := 0; i < 5; i++ {
-		regEmail := randstr.Hex(8)
+		// Случайные данные
+		regEmail := randstr.Hex(8) + "@example.com"
 		regPswd := randstr.Hex(8)
-		client.RegisterUser(ctx, regEmail, regPswd)
-		client.LoginUser(ctx, regEmail, regPswd, 1)
 
-		checkAdminEmail := randstr.Hex(8)
+		// Тест регистрации
+		client.RegisterUser(ctx, regEmail, regPswd)
+		response, err := client.api.Login(ctx, &sso.LoginRequest{Email: regEmail, Password: regPswd, AppId: 1})
+		if err != nil {
+			t.Fatal("bad req")
+		}
+		assert.NotEmpty(t, response.Token, "Expected token to be not empty")
+
+		// Тест статуса администратора
+		checkAdminEmail := randstr.Hex(8) + "@example.com"
 		checkAdminpswd := randstr.Hex(8)
-		userID := client.GetUSerID(ctx, checkAdminEmail, checkAdminpswd)
-		client.CheckAdminStatus(ctx, userID)
+		userID := client.GetUserID(ctx, checkAdminEmail, checkAdminpswd)
+
+		status := client.CheckAdminStatus(ctx, userID)
+		assert.NotNil(t, status, "Expected admin status to be not nil")
 	}
+
+	log.Info("All tests passed")
+}
+
+func main() {
+	TestGRPCClient(&testing.T{})
 }
