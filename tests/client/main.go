@@ -109,9 +109,9 @@ func main() {
 		client.RegisterUser(ctx, regEmail, regPswd)
 		client.LoginUser(ctx, regEmail, regPswd, 1)
 
-		checkAdminemai := randstr.Hex(8)
+		checkAdminEmail := randstr.Hex(8)
 		checkAdminpswd := randstr.Hex(8)
-		userID := client.GetUSerID(ctx, checkAdminemai, checkAdminpswd)
+		userID := client.GetUSerID(ctx, checkAdminEmail, checkAdminpswd)
 		client.CheckAdminStatus(ctx, userID)
 	}
 }
