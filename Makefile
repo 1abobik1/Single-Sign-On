@@ -9,3 +9,6 @@ pg_dump:
 
 local-run:
 	go run cmd/sso/main.go --config=./config/local.yaml
+
+test:
+	go run tests/client/main.go
