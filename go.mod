@@ -7,6 +7,8 @@ require (
 	github.com/babenow/slogwrapper v1.0.2
 	github.com/golang-migrate/migrate/v4 v4.18.1
 	github.com/ilyakaznacheev/cleanenv v1.5.0
+	github.com/sirupsen/logrus v1.9.3
+	github.com/thanhpk/randstr v1.0.6
 	golang.org/x/crypto v0.27.0
 	google.golang.org/grpc v1.67.1
 )
@@ -16,8 +18,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/thanhpk/randstr v1.0.6 // indirect
 )
 
 require (
